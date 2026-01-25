@@ -7,7 +7,7 @@ pool:
  
  
 variables:
-  azureSubscription: 'DEVOPS_001A_GRUPO03' # Este es un nombre que debe cambiar al que crearon.
+  azureSubscription: 'SC-DEVOPS-Grupo03'
   location: 'eastus2'
   resourceGroupName: 'DEVOPS_001A_GRUPO03' # Este es un nombre que debe cambiar al que crearon.
   virtualNetworkName: 'VNet-taller-DevOps'
@@ -31,12 +31,9 @@ steps:
 - task: AzureCLI@2
   inputs:
     azureSubscription: $(azureSubscription)
-    scriptType: 'bash'
-    scriptLocation: 'inlineScript'
+    scriptType: bash
+    scriptLocation: inlineScript
     inlineScript: |
-      set -e  # Termina el script si cualquier comando falla
- 
-      # Crear un grupo de recursos
       echo "Prueba pipeline..."
      
   
