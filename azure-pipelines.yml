@@ -2,38 +2,50 @@ trigger:
 - main
  
 pool:
-  name: "Default"
-
+  vmImage: ubuntu-latest
  
+stages:
+# -------------------------
+# 1) BUILD
+# -------------------------
+- stage: Build
+  displayName: Build app
+  jobs:
+  - job: BuildJob
+    steps:
+    - checkout: self
  
-variables:
-  azureSubscription: 'SC-DEVOPS-Grupo03'
-  location: 'eastus2'
-  resourceGroupName: 'DEVOPS_001A_GRUPO03' # Este es un nombre que debe cambiar al que crearon.
-  virtualNetworkName: 'VNet-taller-DevOps'
-  subnetName: 'Subnet-taller-DevOps'
-  addressPrefix: '10.0.0.0/16'
-  subnetPrefix: '10.0.1.0/24'
-  securityGroupName: 'NSG-taller-DevOps'
-  publicIpName: 'PublicIP-2-taller-DevOps'
-  vmName: 'VM-2-taller-DevOps'
-  vmSize: 'Standard_B1s'  # SKU disponible en eastus2
-  adminUsername: 'azureuser'
-  adminPassword: 'AZUREpassword1'  # Contraseña en texto plano (ajustar según necesidad)
+    - script: |
+        echo "Compilando..."
+        # aquí va tu build real
+      displayName: Build
  
-  # Variables de la imagen
-  imagePublisher: 'Canonical'
-  imageOffer: '0001-com-ubuntu-server-jammy'
-  imageSku: '22_04-lts-gen2'
-  imageVersion: 'latest'  # Versión específica de la imagen
+    - task: PublishBuildArtifacts@1
+      inputs:
+        PathtoPublish: '$(Build.SourcesDirectory)'
+        ArtifactName: 'drop'
+      displayName: Publicar artefacto
  
-steps:
-- task: AzureCLI@2
-  inputs:
-    azureSubscription: $(azureSubscription)
-    scriptType: bash
-    scriptLocation: inlineScript
-    inlineScript: |
-      echo "Prueba pipeline..."
-     
-  
+# -------------------------
+# 2) DEPLOY (a la VM con Environment)
+# -------------------------
+- stage: Deploy
+  displayName: Deploy to VM
+  dependsOn: Build
+  jobs:
+  - deployment: DeployJob
+    displayName: Deploy usando Environment
+    environment: 'env-grupo03-vm'   # <-- nombre del Environment en Azure DevOps
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - download: current
+            artifact: drop
+ 
+          - script: |
+              echo "Desplegando en la VM..."
+              ls -la
+              # Ejemplo: copiar a carpeta del servidor
+              # sudo cp -r $(Pipeline.Workspace)/drop/* /var/www/html/
+            displayName: Deploy
