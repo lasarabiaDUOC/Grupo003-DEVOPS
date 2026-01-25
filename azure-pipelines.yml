@@ -2,7 +2,9 @@ trigger:
 - main
  
 pool:
-  vmImage: 'ubuntu-latest'
+  name: "Default"
+
+ 
  
 variables:
   azureSubscription: 'DEVOPS_001A_GRUPO03' # Este es un nombre que debe cambiar al que crearon.
