@@ -1,51 +1,78 @@
 trigger:
 - main
- 
+
 pool:
   name: "Default"
- 
+
+variables:
+  ArtifactName: "drop"
+  DeployPath: "$(Pipeline.Workspace)/deploy/grupo03" 
+
 stages:
-# -------------------------
-# 1) BUILD
-# -------------------------
 - stage: Build
-  displayName: Build app
+  displayName: Build + Evidencias
   jobs:
   - job: BuildJob
+    displayName: BuildJob
     steps:
     - checkout: self
- 
+
     - script: |
-        echo "Compilando..."
-        # aquí va tu build real
-      displayName: Build
- 
+        echo "== Evidencia de agente/máquina =="
+        echo "Agent.Name=$(Agent.Name)"
+        echo "Agent.MachineName=$(Agent.MachineName)"
+        echo "Agent.OS=$(Agent.OS)"
+        uname -a || true
+      displayName: "Evidencia: agente"
+
+    - script: |
+        echo "== Build (simple) =="
+        mkdir -p artifact
+        {
+          echo "REPORTE PIPELINE"
+          echo "---------------"
+          echo "BuildId: $(Build.BuildId)"
+          echo "Commit : $(Build.SourceVersion)"
+          echo "Branch : $(Build.SourceBranch)"
+          echo "Fecha  : $(Build.QueuedTime)"
+        } > artifact/build_info.txt
+
+        echo "Contenido artifact:"
+        ls -la artifact
+        cat artifact/build_info.txt
+      displayName: "Build: generar artefacto"
+
     - task: PublishBuildArtifacts@1
       inputs:
-        PathtoPublish: '$(Build.SourcesDirectory)'
-        ArtifactName: 'drop'
-      displayName: Publicar artefacto
- 
-# -------------------------
-# 2) DEPLOY (a la VM con Environment)
-# -------------------------
+        PathtoPublish: '$(Build.SourcesDirectory)/artifact'
+        ArtifactName: '$(ArtifactName)'
+      displayName: "Publicar artefacto"
+
 - stage: Deploy
-  displayName: Deploy to VM
+  displayName: Deploy (local, sin permisos extra)
   dependsOn: Build
   jobs:
   - deployment: DeployJob
     displayName: Deploy usando Environment
-    environment: 'env-grupo03-vm'   # <-- nombre del Environment en Azure DevOps
+    environment: 'env-grupo03-vm'
     strategy:
       runOnce:
         deploy:
           steps:
           - download: current
-            artifact: drop
- 
+            artifact: $(ArtifactName)
+
           - script: |
-              echo "Desplegando en la VM..."
-              ls -la
-              # Ejemplo: copiar a carpeta del servidor
-              # sudo cp -r $(Pipeline.Workspace)/drop/* /var/www/html/
-            displayName: Deploy
+              echo "== Deploy REAL local =="
+              echo "Destino: $(DeployPath)"
+              mkdir -p "$(DeployPath)"
+
+              echo "Copiando artefacto..."
+              cp -r "$(Pipeline.Workspace)/$(ArtifactName)/"* "$(DeployPath)/"
+
+              echo "Verificando contenido destino:"
+              ls -la "$(DeployPath)"
+
+              echo "Mostrando build_info:"
+              cat "$(DeployPath)/build_info.txt"
+            displayName: "Deploy: copiar + verificar"
