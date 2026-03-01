@@ -1,79 +1,131 @@
 trigger:
-- main
+  - main
 
 pool:
   name: "Default"
 
 variables:
   ArtifactName: "drop"
-  DeployPath: "$(Pipeline.Workspace)/deploy/grupo03"
+  AppPort: "3000"
+  AppName: "grupo03-miniapp"
 
 stages:
-- stage: Build
-  displayName: Build + Evidencias
-  jobs:
-  - job: BuildJob
-    displayName: BuildJob
-    steps:
-    - checkout: self
-
-    - script: |
-        echo "== Evidencia de agente/máquina =="
-        echo "Agent.Name=$(Agent.Name)"
-        echo "Agent.MachineName=$(Agent.MachineName)"
-        echo "Agent.OS=$(Agent.OS)"
-        uname -a || true
-      displayName: "Evidencia: agente"
-
-    - script: |
-        echo "== Build (simple) =="
-        mkdir -p artifact
-        {
-          echo "REPORTE PIPELINE"
-          echo "---------------"
-          echo "BuildId: $(Build.BuildId)"
-          echo "Commit : $(Build.SourceVersion)"
-          echo "Branch : $(Build.SourceBranch)"
-          echo "Fecha  : $(Build.QueuedTime)"
-        } > artifact/build_info.txt
-
-        echo "Contenido artifact:"
-        ls -la artifact
-        cat artifact/build_info.txt
-      displayName: "Build: generar artefacto"
-
-    - task: PublishPipelineArtifact@1
-      inputs:
-        targetPath: '$(Build.SourcesDirectory)/artifact'
-        artifact: 'drop'
-      displayName: "Publicar artefacto"
-
-- stage: Deploy
-  displayName: Deploy (local, sin permisos extra)
-  dependsOn: Build
-  jobs:
-  - deployment: DeployJob
-    displayName: Deploy usando Environment
-    environment: 'env-grupo03-vm'
-    strategy:
-      runOnce:
-        deploy:
-          steps:
-          - download: current
-            artifact: $(ArtifactName)
+  - stage: Build
+    displayName: Build + Artefacto
+    jobs:
+      - job: BuildJob
+        displayName: BuildJob
+        steps:
+          - checkout: self
 
           - script: |
-              echo "== Deploy REAL local =="
-              echo "Origen: $(Pipeline.Workspace)/$(ArtifactName)"
-              echo "Destino: $(DeployPath)"
-              mkdir -p "$(DeployPath)"
+              echo "== Evidencia de agente/máquina =="
+              echo "Agent.Name=$(Agent.Name)"
+              echo "Agent.MachineName=$(Agent.MachineName)"
+              echo "Agent.OS=$(Agent.OS)"
+              uname -a || true
+            displayName: "Evidencia: agente"
 
-              echo "Copiando artefacto..."
-              cp -r "$(Pipeline.Workspace)/$(ArtifactName)/"* "$(DeployPath)/"
+          - script: |
+              echo "== Instalación (automática) =="
+              # Como no hay deps, esto es rápido. Si hay lockfile, mejor.
+              if [ -f package-lock.json ]; then
+                npm ci
+              else
+                npm install
+              fi
+            displayName: "Install (npm)"
 
-              echo "Verificando contenido destino:"
-              ls -la "$(DeployPath)"
+          - script: |
+              echo "== Preparando artefacto =="
+              mkdir -p artifact
 
-              echo "Mostrando build_info:"
-              cat "$(DeployPath)/build_info.txt"
-            displayName: "Deploy: copiar + verificar"
+              # App
+              cp server.js artifact/
+              cp package.json artifact/
+              [ -f package-lock.json ] && cp package-lock.json artifact/ || true
+
+              # Evidencia
+              {
+                echo "REPORTE PIPELINE"
+                echo "---------------"
+                echo "BuildId: $(Build.BuildId)"
+                echo "Commit : $(Build.SourceVersion)"
+                echo "Branch : $(Build.SourceBranch)"
+                echo "Fecha  : $(Build.QueuedTime)"
+              } > artifact/build_info.txt
+
+              echo "Contenido artifact:"
+              ls -la artifact
+            displayName: "Package + build_info"
+
+          - task: PublishPipelineArtifact@1
+            inputs:
+              targetPath: "$(Build.SourcesDirectory)/artifact"
+              artifact: "$(ArtifactName)"
+            displayName: "Publicar artefacto"
+
+  - stage: Deploy
+    displayName: Deploy (local VM) + Run + Smoke test
+    dependsOn: Build
+    jobs:
+      - deployment: DeployJob
+        displayName: Deploy usando Environment
+        environment: "env-grupo03-vm"
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: $(ArtifactName)
+
+                - script: |
+                    set -e
+
+                    echo "== Deploy REAL local en la VM =="
+                    SRC="$(Pipeline.Workspace)/$(ArtifactName)"
+                    DEST="$HOME/deploy/$(AppName)"
+                    PORT="$(AppPort)"
+
+                    echo "Origen : $SRC"
+                    echo "Destino: $DEST"
+                    mkdir -p "$DEST"
+
+                    echo "Copiando archivos..."
+                    cp -r "$SRC/"* "$DEST/"
+
+                    echo "Instalación en destino (si aplica)..."
+                    cd "$DEST"
+                    if [ -f package-lock.json ]; then
+                      npm ci
+                    else
+                      npm install
+                    fi
+
+                    echo "Reiniciando app..."
+                    # cortar anterior si existe
+                    if [ -f app.pid ]; then
+                      OLD_PID="$(cat app.pid)"
+                      if kill -0 "$OLD_PID" >/dev/null 2>&1; then
+                        echo "Matando proceso anterior PID=$OLD_PID"
+                        kill "$OLD_PID" || true
+                        sleep 1
+                      fi
+                    fi
+
+                    # levantar en segundo plano
+                    nohup npm start > app.log 2>&1 &
+                    echo $! > app.pid
+
+                    echo "PID actual: $(cat app.pid)"
+                    echo "Últimas líneas del log:"
+                    tail -n 20 app.log || true
+
+                    echo "== Smoke test =="
+                    curl -fsS "http://127.0.0.1:${PORT}/health"
+                    echo ""
+                    echo "OK - /health responde"
+
+                    echo "== Evidencia build_info =="
+                    cat build_info.txt
+                  displayName: "Deploy + Install + Start + SmokeTest"
