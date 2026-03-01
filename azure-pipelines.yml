@@ -6,7 +6,7 @@ pool:
 
 variables:
   ArtifactName: "drop"
-  DeployPath: "$(Pipeline.Workspace)/deploy/grupo03" 
+  DeployPath: "$(Pipeline.Workspace)/deploy/grupo03"
 
 stages:
 - stage: Build
@@ -44,9 +44,9 @@ stages:
 
     - task: PublishPipelineArtifact@1
       inputs:
-        targetPath: '$(Build.SourcesDirectory)'
+        targetPath: '$(Build.SourcesDirectory)/artifact'
         artifact: 'drop'
-      displayName: Publicar artefacto
+      displayName: "Publicar artefacto"
 
 - stage: Deploy
   displayName: Deploy (local, sin permisos extra)
@@ -64,6 +64,7 @@ stages:
 
           - script: |
               echo "== Deploy REAL local =="
+              echo "Origen: $(Pipeline.Workspace)/$(ArtifactName)"
               echo "Destino: $(DeployPath)"
               mkdir -p "$(DeployPath)"
 
