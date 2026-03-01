@@ -42,11 +42,11 @@ stages:
         cat artifact/build_info.txt
       displayName: "Build: generar artefacto"
 
-    - task: PublishBuildArtifacts@1
+    - task: PublishPipelineArtifact@1
       inputs:
-        PathtoPublish: '$(Build.SourcesDirectory)/artifact'
-        ArtifactName: '$(ArtifactName)'
-      displayName: "Publicar artefacto"
+        targetPath: '$(Build.SourcesDirectory)'
+        artifact: 'drop'
+      displayName: Publicar artefacto
 
 - stage: Deploy
   displayName: Deploy (local, sin permisos extra)
