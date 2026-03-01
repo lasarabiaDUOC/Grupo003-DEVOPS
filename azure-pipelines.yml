@@ -6,15 +6,13 @@ pool:
 
 variables:
   ArtifactName: "drop"
-  AppPort: "3000"
-  AppName: "grupo03-miniapp"
+  DeployPath: "$HOME/deploy/grupo03-static"
 
 stages:
   - stage: Build
     displayName: Build + Artefacto
     jobs:
       - job: BuildJob
-        displayName: BuildJob
         steps:
           - checkout: self
 
@@ -27,23 +25,11 @@ stages:
             displayName: "Evidencia: agente"
 
           - script: |
-              echo "== Instalación (automática) =="
-              # Como no hay deps, esto es rápido. Si hay lockfile, mejor.
-              if [ -f package-lock.json ]; then
-                npm ci
-              else
-                npm install
-              fi
-            displayName: "Install (npm)"
-
-          - script: |
-              echo "== Preparando artefacto =="
+              echo "== Build (simple) =="
               mkdir -p artifact
 
-              # App
-              cp server.js artifact/
-              cp package.json artifact/
-              [ -f package-lock.json ] && cp package-lock.json artifact/ || true
+              # "Software" a desplegar (estático)
+              cp index.html artifact/
 
               # Evidencia
               {
@@ -57,7 +43,7 @@ stages:
 
               echo "Contenido artifact:"
               ls -la artifact
-            displayName: "Package + build_info"
+            displayName: "Preparar artefacto"
 
           - task: PublishPipelineArtifact@1
             inputs:
@@ -66,7 +52,7 @@ stages:
             displayName: "Publicar artefacto"
 
   - stage: Deploy
-    displayName: Deploy (local VM) + Run + Smoke test
+    displayName: Deploy (local VM)
     dependsOn: Build
     jobs:
       - deployment: DeployJob
@@ -81,51 +67,20 @@ stages:
 
                 - script: |
                     set -e
-
-                    echo "== Deploy REAL local en la VM =="
+                    echo "== Deploy REAL local =="
                     SRC="$(Pipeline.Workspace)/$(ArtifactName)"
-                    DEST="$HOME/deploy/$(AppName)"
-                    PORT="$(AppPort)"
+                    DEST="$(DeployPath)"
 
                     echo "Origen : $SRC"
                     echo "Destino: $DEST"
                     mkdir -p "$DEST"
 
-                    echo "Copiando archivos..."
+                    echo "Copiando..."
                     cp -r "$SRC/"* "$DEST/"
 
-                    echo "Instalación en destino (si aplica)..."
-                    cd "$DEST"
-                    if [ -f package-lock.json ]; then
-                      npm ci
-                    else
-                      npm install
-                    fi
-
-                    echo "Reiniciando app..."
-                    # cortar anterior si existe
-                    if [ -f app.pid ]; then
-                      OLD_PID="$(cat app.pid)"
-                      if kill -0 "$OLD_PID" >/dev/null 2>&1; then
-                        echo "Matando proceso anterior PID=$OLD_PID"
-                        kill "$OLD_PID" || true
-                        sleep 1
-                      fi
-                    fi
-
-                    # levantar en segundo plano
-                    nohup npm start > app.log 2>&1 &
-                    echo $! > app.pid
-
-                    echo "PID actual: $(cat app.pid)"
-                    echo "Últimas líneas del log:"
-                    tail -n 20 app.log || true
-
-                    echo "== Smoke test =="
-                    curl -fsS "http://127.0.0.1:${PORT}/health"
+                    echo "Verificando:"
+                    ls -la "$DEST"
                     echo ""
-                    echo "OK - /health responde"
-
-                    echo "== Evidencia build_info =="
-                    cat build_info.txt
-                  displayName: "Deploy + Install + Start + SmokeTest"
+                    echo "build_info.txt:"
+                    cat "$DEST/build_info.txt"
+                  displayName: "Deploy: copiar + verificar"
